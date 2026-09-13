@@ -1,5 +1,7 @@
 # Pishi (皮实)
 
+[![Maven Central](https://img.shields.io/maven-central/v/io.github.lanhuangjg/pishi-gradle-plugin?label=Maven%20Central)](https://central.sonatype.com/artifact/io.github.lanhuangjg/pishi-gradle-plugin)
+
 **English** | [中文](README-zh.md)
 
 Pishi is a fork of [Meituan-Dianping/Robust](https://github.com/Meituan-Dianping/Robust) 0.4.99,
@@ -7,9 +9,9 @@ modernized for **AGP 8+**. Pishi (皮实, "hardy / takes a beating") is an Andro
 that lets you fix method-level bugs and ship them to running apps **without reinstalling** —
 patches take effect instantly, no restart required.
 
-> **Status: 0.1.0-alpha.** All modules compile against AGP 8.13 / Gradle 9.5 / JDK 17+,
-> and the sample app builds, but the full patch round-trip (instrument → patch → load)
-> has not been verified on a device yet. Expect breaking changes.
+> **Status: 0.1.1.** Instrumentation is verified end-to-end in real builds (a
+> `methodsMap.jsonl` is generated with one entry per patched method); patch generation
+> and on-device loading are next. Expect breaking changes.
 
 ## Why a fork
 
@@ -45,20 +47,21 @@ knowledge and tooling transfer directly.
 
 The workflow is identical to Robust's:
 
-1. Apply `pishi` to your app module (config lives in `robust.xml`, same format as Robust —
-   list your packages under `<packname>`).
-2. Release builds get instrumented automatically; a `methodsMap.robust` is written to
-   `build/outputs/robust/`. Copy it to your module's `robust/` directory (same manual step
-   as Robust).
+1. Apply `io.github.lanhuangjg.pishi` to your app module (config lives in `robust.xml`, same
+   format as Robust — list your packages under `<packname>`).
+2. Release builds get instrumented automatically; a `methodsMap.jsonl` is written to
+   `build/outputs/robust/`. Copy it to your module's `robust/` directory.
 3. To ship a fix: apply your patch, mark modified methods with `@Modify` / `RobustModify.modify()`,
-   apply `pishi-autopatch` instead of `pishi`, and build — it produces `patch.jar`.
+   apply `io.github.lanhuangjg.pishi.autopatch` instead of `pishi`, and build — it produces `patch.jar`.
+
+Coordinates: `io.github.lanhuangjg:{pishi-gradle-plugin, pishi-autopatch, pishi-api, pishi-core}`.
+Plugin ids: `io.github.lanhuangjg.pishi` / `io.github.lanhuangjg.pishi.autopatch`.
 
 Build the sample:
 
 ```bash
-./gradlew publishToMavenLocal          # one-time, publishes the plugins
-# then uncomment the marked lines in build.gradle + app/build.gradle
-./gradlew :app:assembleDebug
+./gradlew publishToMavenLocal   # one-time: install the plugins locally
+./gradlew :app:assembleRelease  # instrumented build; methodsMap.jsonl lands in app/build/outputs/robust/
 ```
 
 ## Requirements
@@ -68,7 +71,7 @@ Build the sample:
 
 ## Roadmap
 
-- [ ] Verify the full patch round-trip on a device/emulator
+- [ ] Verify patch generation + on-device patch loading (instrumentation itself is verified end-to-end in real builds)
 - [ ] CI (GitHub Actions) building all modules
 - [ ] Publish to Maven Central
 - [ ] R8 edge-case matrix (upstream 0.4.99 handles ProGuard maps; R8 output is largely compatible but untested)

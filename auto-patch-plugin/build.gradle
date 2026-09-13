@@ -11,9 +11,21 @@ base {
     archivesName = 'pishi-autopatch'
 }
 
+gradlePlugin {
+    plugins {
+        pishiAutoPatchPlugin {
+            id = 'io.github.lanhuangjg.pishi.autopatch'
+            implementationClass = 'pishi.gradle.plugin.PishiAutoPatchPlugin'
+            displayName = 'Pishi AutoPatch Gradle Plugin'
+            description = 'Pishi (Robust fork) patch generation plugin for AGP 8+'
+        }
+    }
+}
+
 apply plugin: 'com.vanniktech.maven.publish'
 
 mavenPublishing {
+    coordinates(GROUP, 'pishi-autopatch', VERSION_NAME)
     publishToMavenCentral()
     signAllPublications()
 
@@ -54,11 +66,14 @@ tasks.withType(GroovyCompile).configureEach {
 }
 
 dependencies {
-    implementation gradleApi()
-    implementation localGroovy()
+    // provided by the consuming Gradle build; excluded from published POMs
+    compileOnly gradleApi()
+    compileOnly localGroovy()
     // AGP is provided at runtime by the consumer build
     compileOnly 'com.android.tools.build:gradle:8.13.0'
     implementation 'org.javassist:javassist:3.30.2-GA'
     implementation 'commons-io:commons-io:2.16.1'
+    // D8 (replaces the discontinued dx) is invoked from this jar at patch-build time
+    implementation 'com.android.tools:r8:9.4.17'
     implementation project(':autopatchbase')
 }

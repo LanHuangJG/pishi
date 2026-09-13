@@ -5,10 +5,9 @@ import com.android.build.api.instrumentation.InstrumentationScope
 import com.android.build.api.variant.AndroidComponentsExtension
 import com.pishi.hotfix.Constants
 import groovy.xml.XmlSlurper
+import org.gradle.api.Action
 import org.gradle.api.Plugin
 import org.gradle.api.Project
-
-import java.util.zip.GZIPOutputStream
 
 /**
  * Pishi instrumentation plugin (originally Robust's `robust` plugin).
@@ -17,8 +16,12 @@ import java.util.zip.GZIPOutputStream
  * Differences from Robust:
  *  - uses the AGP 8 Instrumentation API instead of the removed Transform API
  *  - debug variants are skipped precisely by buildType (not by task-name heuristics)
- *  - turnOnRobust=false now really disables instrumentation
  *  - apk-hash support is dropped
+ *  - only classes under the configured hotfix packages are visited/rewritten
+ *
+ * Groovy note: onVariants() is overloaded in AGP, and Groovy does not do implicit
+ * closure-to-SAM coercion for overloaded methods, so the Action argument must be cast
+ * explicitly (`as Action`).
  */
 class PishiPlugin implements Plugin<Project> {
 
@@ -30,7 +33,6 @@ class PishiPlugin implements Plugin<Project> {
                     "(after 'com.android.application' or 'com.android.library')")
         }
 
-        boolean turnOn = true
         boolean forceInsert = false
         boolean hotfixMethodLevel = false
         boolean exceptMethodLevel = false
@@ -47,66 +49,66 @@ class PishiPlugin implements Plugin<Project> {
             exceptPackages = robust.exceptPackname.name.collect { it.text() }
             hotfixMethods = robust.hotfixMethod.name.collect { it.text() }
             exceptMethods = robust.exceptMethod.name.collect { it.text() }
-            turnOn = robust.switch.turnOnRobust == null || "true" == String.valueOf(robust.switch.turnOnRobust.text())
-            forceInsert = robust.switch.forceInsert != null && "true" == String.valueOf(robust.switch.forceInsert.text())
-            forceInsertLambda = robust.switch.forceInsertLambda != null && "true" == String.valueOf(robust.switch.forceInsertLambda.text())
-            hotfixMethodLevel = robust.switch.filterMethod != null && "true" == String.valueOf(robust.switch.turnOnHotfixMethod.text())
-            exceptMethodLevel = robust.switch.filterMethod != null && "true" == String.valueOf(robust.switch.turnOnExceptMethod.text())
+            // GPathResult never returns null for missing nodes; check the text instead.
+            // Missing turnOnRobust defaults to ON (same as Robust's documented default).
+            boolean turnOn = String.valueOf(robust.switch.turnOnRobust.text()) != "false"
+            forceInsert = String.valueOf(robust.switch.forceInsert.text()) == "true"
+            forceInsertLambda = String.valueOf(robust.switch.forceInsertLambda.text()) == "true"
+            hotfixMethodLevel = String.valueOf(robust.switch.turnOnHotfixMethod.text()) == "true"
+            exceptMethodLevel = String.valueOf(robust.switch.turnOnExceptMethod.text()) == "true"
+            if (!turnOn) {
+                project.logger.lifecycle("pishi: turnOnRobust=false, instrumentation disabled")
+                return
+            }
+            if (!forceInsert) {
+                components.onVariants(components.selector().all(), { variant ->
+                    if ("debug" != variant.buildType) {
+                        registerInstrumentation(project, components, variant, hotfixPackages,
+                                hotfixMethods, exceptPackages, exceptMethods,
+                                hotfixMethodLevel, exceptMethodLevel, forceInsertLambda)
+                    }
+                } as Action)
+            } else {
+                components.onVariants(components.selector().all(), { variant ->
+                    registerInstrumentation(project, components, variant, hotfixPackages,
+                            hotfixMethods, exceptPackages, exceptMethods,
+                            hotfixMethodLevel, exceptMethodLevel, forceInsertLambda)
+                } as Action)
+            }
         } else {
             project.logger.warn("pishi: robust.xml not found in ${project.projectDir}, " +
                     "no package will be instrumented until you configure hotfixPackage")
         }
+    }
 
-        if (!turnOn) {
-            project.logger.lifecycle("pishi: turnOnRobust=false, instrumentation disabled")
-            return
+    private void registerInstrumentation(Project project, AndroidComponentsExtension components,
+                                         def variant, List<String> hotfixPackages, List<String> hotfixMethods,
+                                         List<String> exceptPackages, List<String> exceptMethods,
+                                         boolean hotfixMethodLevel, boolean exceptMethodLevel,
+                                         boolean forceInsertLambda) {
+        variant.instrumentation.transformClassesWith(PishiClassVisitorFactory.class, InstrumentationScope.ALL) { params ->
+            params.variantName.set(project.path + ":" + variant.name)
+            params.hotfixPackages.set(hotfixPackages)
+            params.hotfixMethods.set(hotfixMethods)
+            params.exceptPackages.set(exceptPackages)
+            params.exceptMethods.set(exceptMethods)
+            params.hotfixMethodLevel.set(hotfixMethodLevel)
+            params.exceptMethodLevel.set(exceptMethodLevel)
+            params.forceInsertLambda.set(forceInsertLambda)
+            params.methodMapPath.set(new File(project.layout.buildDirectory.get().asFile,
+                    Constants.METHOD_MAP_OUT_PATH).absolutePath)
         }
+        variant.instrumentation.setAsmFramesComputationMode(FramesComputationMode.COMPUTE_FRAMES_FOR_INSTRUMENTED_METHODS)
+        project.logger.lifecycle("pishi: instrumentation registered for variant ${variant.name}")
 
-        components.onVariants { variant ->
-            // Robust only instruments non-debug builds unless forceInsert is enabled
-            if (!forceInsert && "debug" == variant.buildType) {
-                return
-            }
-            variant.instrumentation.transformClassesWith(PishiClassVisitorFactory.class, InstrumentationScope.ALL) { params ->
-                params.variantName.set(variant.name)
-                params.hotfixPackages.set(hotfixPackages)
-                params.hotfixMethods.set(hotfixMethods)
-                params.exceptPackages.set(exceptPackages)
-                params.exceptMethods.set(exceptMethods)
-                params.hotfixMethodLevel.set(hotfixMethodLevel)
-                params.exceptMethodLevel.set(exceptMethodLevel)
-                params.forceInsertLambda.set(forceInsertLambda)
-            }
-            variant.instrumentation.setAsmFramesComputationMode(FramesComputationMode.COMPUTE_FRAMES_FOR_INSTRUMENTED_METHODS)
-            project.logger.lifecycle("pishi: instrumentation registered for variant ${variant.name}")
-        }
-
-        // persist methodMap once the ASM instrumentation task finishes,
-        // same file + format as Robust (gzip'ed serialized map)
+        // methodMap persistence: the ASM worker runs in an isolated classloader, so the
+        // visitors append to methodsMap.jsonl directly; the file just starts empty per run
+        File methodMapFile = new File(project.layout.buildDirectory.get().asFile, Constants.METHOD_MAP_OUT_PATH)
         project.tasks.configureEach { task ->
-            if (task.name.toLowerCase().contains("asmclassvisitorfactory")) {
-                task.doLast {
-                    Map<String, Integer> methodMap = null
-                    for (Map<String, Integer> candidate : PishiRegistry.METHOD_MAPS.values()) {
-                        if (methodMap == null || candidate.size() > methodMap.size()) {
-                            methodMap = candidate
-                        }
-                    }
-                    if (methodMap == null || methodMap.isEmpty()) {
-                        project.logger.warn("pishi: methodMap is empty, no method was instrumented")
-                        return
-                    }
-                    File out = new File(project.layout.buildDirectory.get().asFile, Constants.METHOD_MAP_OUT_PATH)
-                    out.parentFile.mkdirs()
-                    def byteOut = new ByteArrayOutputStream()
-                    def objOut = new ObjectOutputStream(byteOut)
-                    objOut.writeObject(methodMap)
-                    objOut.close()
-                    def gzip = new GZIPOutputStream(new FileOutputStream(out))
-                    gzip.write(byteOut.toByteArray())
-                    gzip.flush()
-                    gzip.close()
-                    project.logger.lifecycle("pishi: methodMap written to ${out} (${methodMap.size()} methods)")
+            if (task.name.contains("ClassesWithAsm") || task.name.contains("AsmClassVisitorFactory")) {
+                task.doFirst {
+                    methodMapFile.parentFile.mkdirs()
+                    methodMapFile.delete()
                 }
             }
         }

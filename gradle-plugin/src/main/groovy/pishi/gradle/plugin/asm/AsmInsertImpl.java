@@ -105,8 +105,11 @@ public class AsmInsertImpl extends InsertcodeStrategy {
                 parameters.deleteCharAt(parameters.length() - 1);
             }
             //record method number
-            methodMap.put(className.replace('/', '.') + "." + name + "(" + parameters.toString() + ")", insertMethodCount.incrementAndGet());
-            return new MethodBodyInsertor(mv, className, desc, isStatic(access), String.valueOf(insertMethodCount.get()), name, access);
+            // deterministic method id: String.hashCode is specified across JVMs, so ids
+            // stay stable under worker isolation, parallel and incremental execution
+            String methodKey = className.replace('/', '.') + "." + name + "(" + parameters.toString() + ")";
+            methodMap.put(methodKey, methodKey.hashCode());
+            return new MethodBodyInsertor(mv, className, desc, isStatic(access), String.valueOf(methodKey.hashCode()), name, access);
         }
 
         private boolean isProtect(int access) {

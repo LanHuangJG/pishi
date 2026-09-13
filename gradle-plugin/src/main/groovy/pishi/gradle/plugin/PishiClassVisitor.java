@@ -7,9 +7,13 @@ import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.tree.ClassNode;
 
-import java.io.IOException;
-
 import pishi.gradle.plugin.asm.AsmInsertImpl;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 
 /**
  * Per-class pipeline for the AGP 8 Instrumentation API. Mirrors Robust 0.4.99's ASM path:
@@ -19,20 +23,28 @@ import pishi.gradle.plugin.asm.AsmInsertImpl;
  *  3. for eligible classes (package filter + has declared methods + not an interface),
  *     run {@link AsmInsertImpl#transformCode} to insert the changeQuickRedirect field
  *     and dispatch stubs
+ *
+ * After instrumentation the class's method entries (method key -> deterministic id) are
+ * appended as one JSON line to methodsMap.jsonl — the file, not memory, is the methodMap
+ * store, because the ASM worker runs in an isolated classloader.
  */
 public class PishiClassVisitor extends ClassVisitor implements Opcodes {
 
+    private static final Object FILE_LOCK = new Object();
+
     private final ClassVisitor nextClassVisitor;
     private final AsmInsertImpl insertStrategy;
+    private final String methodMapPath;
 
     private ClassNode classNode;
     private boolean classEligible;
     private int declaredMethodCount;
 
-    public PishiClassVisitor(ClassVisitor nextClassVisitor, AsmInsertImpl insertStrategy) {
+    public PishiClassVisitor(ClassVisitor nextClassVisitor, AsmInsertImpl insertStrategy, String methodMapPath) {
         super(ASM9);
         this.nextClassVisitor = nextClassVisitor;
         this.insertStrategy = insertStrategy;
+        this.methodMapPath = methodMapPath;
     }
 
     @Override
@@ -57,14 +69,43 @@ public class PishiClassVisitor extends ClassVisitor implements Opcodes {
         super.visitEnd();
         classNode.access = (classNode.access & ~(ACC_PRIVATE | ACC_PROTECTED)) | ACC_PUBLIC;
         byte[] bytes = toBytes(classNode);
+        boolean instrumented = false;
         if (classEligible && declaredMethodCount > 0) {
             try {
                 bytes = insertStrategy.transformCode(bytes, classNode.name);
+                instrumented = true;
             } catch (IOException e) {
                 throw new RuntimeException("pishi: failed to instrument class " + classNode.name, e);
             }
         }
         new ClassReader(bytes).accept(nextClassVisitor, 0);
+        if (instrumented && methodMapPath != null && !insertStrategy.methodMap.isEmpty()) {
+            appendMethodMapLine();
+        }
+    }
+
+    private void appendMethodMapLine() {
+        StringBuilder line = new StringBuilder("{\"class\":\"").append(classNode.name.replace("/", "."))
+                .append("\",\"methods\":{");
+        boolean first = true;
+        for (java.util.Map.Entry<String, Integer> entry : insertStrategy.methodMap.entrySet()) {
+            if (!first) {
+                line.append(',');
+            }
+            first = false;
+            line.append('"').append(entry.getKey().replace("\\", "\\\\").replace("\"", "\\\""))
+                    .append("\":").append(entry.getValue());
+        }
+        line.append("}}\n");
+        Path path = java.nio.file.Paths.get(methodMapPath);
+        try {
+            synchronized (FILE_LOCK) {
+                Files.write(path, line.toString().getBytes(StandardCharsets.UTF_8),
+                        StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+            }
+        } catch (IOException e) {
+            throw new RuntimeException("pishi: failed to append methodMap entry to " + methodMapPath, e);
+        }
     }
 
     private static byte[] toBytes(ClassNode node) {

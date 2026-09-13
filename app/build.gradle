@@ -51,6 +51,6 @@ configurations.all {
 
 // To build the sample with Pishi instrumentation enabled:
 //   1. ./gradlew publishToMavenLocal
-//   2. add `classpath 'pishi:pishi.gradle.plugin:0.1.0'` to the root buildscript
+//   2. add `classpath 'io.github.lanhuangjg:pishi-gradle-plugin:<version>'` to the root buildscript
 //   3. uncomment the next line
-// apply plugin: 'pishi'
+apply plugin: 'io.github.lanhuangjg.pishi'

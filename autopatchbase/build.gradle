@@ -12,6 +12,7 @@ base {
 apply plugin: 'com.vanniktech.maven.publish'
 
 mavenPublishing {
+    coordinates(GROUP, 'pishi-api', VERSION_NAME)
     publishToMavenCentral()
     signAllPublications()
 

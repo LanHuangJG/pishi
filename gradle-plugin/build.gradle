@@ -11,9 +11,21 @@ base {
     archivesName = 'pishi-gradle-plugin'
 }
 
+gradlePlugin {
+    plugins {
+        pishiPlugin {
+            id = 'io.github.lanhuangjg.pishi'
+            implementationClass = 'pishi.gradle.plugin.PishiPlugin'
+            displayName = 'Pishi Gradle Plugin'
+            description = 'Android method-level hotfix instrumentation plugin (Robust fork for AGP 8+)'
+        }
+    }
+}
+
 apply plugin: 'com.vanniktech.maven.publish'
 
 mavenPublishing {
+    coordinates(GROUP, 'pishi-gradle-plugin', VERSION_NAME)
     publishToMavenCentral()
     signAllPublications()
 
@@ -54,8 +66,9 @@ tasks.withType(GroovyCompile).configureEach {
 }
 
 dependencies {
-    implementation gradleApi()
-    implementation localGroovy()
+    // provided by the consuming Gradle build; excluded from published POMs
+    compileOnly gradleApi()
+    compileOnly localGroovy()
     // AGP is provided at runtime by the consumer build
     compileOnly 'com.android.tools.build:gradle:8.13.0'
     implementation 'org.javassist:javassist:3.30.2-GA'

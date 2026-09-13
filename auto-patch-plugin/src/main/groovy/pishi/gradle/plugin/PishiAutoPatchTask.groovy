@@ -21,11 +21,11 @@ import javassist.expr.MethodCall
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.FileSystemLocation
 import org.gradle.api.provider.ListProperty
+import org.gradle.api.tasks.Classpath
+import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.TaskAction
 
-import java.util.jar.JarEntry
-import java.util.jar.JarFile
 import java.util.zip.Deflater
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
@@ -38,7 +38,8 @@ import java.util.zip.ZipOutputStream
  */
 abstract class PishiAutoPatchTask extends DefaultTask {
 
-    @Internal
+    @InputFiles
+    @Classpath
     abstract ListProperty<FileSystemLocation> getAllClasses()
 
     @Internal
@@ -83,13 +84,26 @@ abstract class PishiAutoPatchTask extends DefaultTask {
         ROBUST_DIR = "${inputProjectDir}${File.separator}robust${File.separator}"
         def baksmaliFilePath = "${ROBUST_DIR}${Constants.LIB_NAME_ARRAY[0]}"
         def smaliFilePath = "${ROBUST_DIR}${Constants.LIB_NAME_ARRAY[1]}"
-        def dxFilePath = "${ROBUST_DIR}${Constants.LIB_NAME_ARRAY[2]}"
         Config.robustGenerateDirectory = "${inputBuildDir}" + File.separator + "$Constants.ROBUST_GENERATE_DIRECTORY" + File.separator
         dex2SmaliCommand = "  java -jar ${baksmaliFilePath} -o classout" + File.separator + "  $Constants.CLASSES_DEX_NAME"
         smali2DexCommand = "   java -jar ${smaliFilePath} classout" + File.separator + " -o " + Constants.PATACH_DEX_NAME
-        jar2DexCommand = "   java -jar ${dxFilePath} --dex --output=$Constants.CLASSES_DEX_NAME  " + Constants.ZIP_FILE_NAME
+        // D8 replaced the discontinued dx; the r8 jar ships on the plugin classpath
+        def androidJar = bootClasspathList.isEmpty() ? "" : bootClasspathList.first().absolutePath
+        jar2DexCommand = "   java -cp ${resolveR8Jar()} com.android.tools.r8.D8 --release --min-api 21 --lib ${androidJar} --output . ${Constants.ZIP_FILE_NAME}"
         ReadXML.readXMl(inputProjectDir.path)
-        Config.methodMap = JavaUtils.getMapFromZippedFile(inputProjectDir.path + Constants.METHOD_MAP_PATH)
+        def methodsMapFile = new File(inputProjectDir.path + Constants.METHOD_MAP_PATH)
+        Config.methodMap = new LinkedHashMap<String, Integer>()
+        if (methodsMapFile.exists()) {
+            def json = new groovy.json.JsonSlurper()
+            methodsMapFile.eachLine { line ->
+                if (line.trim()) {
+                    def entry = json.parseText(line)
+                    ((Map) entry.methods).each { k, v -> Config.methodMap.put(k as String, v as Integer) }
+                }
+            }
+        } else {
+            logger.warn("pishi: ${methodsMapFile} not found — copy it from the instrumented module's build/outputs/robust/ first")
+        }
     }
 
     static def copyJarToRobust() {
@@ -112,6 +126,17 @@ abstract class PishiAutoPatchTask extends DefaultTask {
                 System.out.println("Warning!!! " + libName + " copy error " + e.getMessage())
             }
         }
+    }
+
+    /** locates the r8 jar (provides the D8 entry point) on the plugin classpath */
+    static String resolveR8Jar() {
+        def url = PishiAutoPatchTask.class.getResource("/com/android/tools/r8/D8.class")
+        if (url == null) {
+            throw new RuntimeException("com.android.tools:r8 not found on the pishi-autopatch classpath")
+        }
+        def path = url.toString()   // jar:file:/.../r8-x.y.jar!/com/android/tools/r8/D8.class
+        def jarPath = path.substring(path.indexOf("file:") + 5, path.indexOf("!"))
+        return URLDecoder.decode(jarPath, "UTF-8")
     }
 
     def autoPatch(List<CtClass> box) {
