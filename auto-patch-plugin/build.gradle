@@ -1,0 +1,28 @@
+plugins {
+    id 'groovy'
+    id 'java-gradle-plugin'
+    id 'maven-publish'
+}
+
+group = GROUP
+version = VERSION_NAME
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
+
+tasks.withType(GroovyCompile).configureEach {
+    sourceCompatibility = '17'
+    targetCompatibility = '17'
+}
+
+dependencies {
+    implementation gradleApi()
+    implementation localGroovy()
+    // AGP is provided at runtime by the consumer build
+    compileOnly 'com.android.tools.build:gradle:8.13.0'
+    implementation 'org.javassist:javassist:3.30.2-GA'
+    implementation 'commons-io:commons-io:2.16.1'
+    implementation project(':autopatchbase')
+}

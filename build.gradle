@@ -1,0 +1,29 @@
+// Pishi (皮实) root build file — migrated from Robust 0.4.99 for AGP 8+
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+        mavenLocal()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.13.0'
+        // After `./gradlew publishToMavenLocal` (see README), uncomment to build the
+        // sample app with instrumentation enabled:
+        // classpath 'pishi:pishi.gradle.plugin:0.1.0'
+        // classpath 'pishi-autopatch:pishi-autopatch.gradle.plugin:0.1.0'
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    tasks.withType(JavaCompile).configureEach {
+        options.encoding = 'UTF-8'
+    }
+}
+
+tasks.register('clean', Delete) {
+    delete rootProject.layout.buildDirectory
+}

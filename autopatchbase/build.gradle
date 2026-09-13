@@ -1,0 +1,11 @@
+plugins {
+    id 'java'
+}
+
+group = GROUP
+version = VERSION_NAME
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
+}

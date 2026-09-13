@@ -1,0 +1,32 @@
+plugins {
+    id 'com.android.library'
+}
+
+group = GROUP
+version = VERSION_NAME
+
+base {
+    archivesName = 'pishi'
+}
+
+android {
+    namespace 'com.pishi.hotfix'
+    compileSdk 36
+
+    defaultConfig {
+        minSdk 21
+        targetSdk 36
+        versionCode 1
+        versionName '1.0'
+        consumerProguardFiles 'proguard-rules.pro'
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+}
+
+dependencies {
+    api project(':autopatchbase')
+}
