@@ -49,6 +49,9 @@ public class PatchExecutor extends Thread {
      * 应用补丁列表
      */
     protected void applyPatchList(List<Patch> patches) {
+        // upstream Robust declared this callback but NEVER invoked it — hosts hooking
+        // plugin loads into it silently never fired. Call it before the empty-list bail.
+        robustCallBack.onPatchListFetched(patches != null && !patches.isEmpty(), true, patches);
         if (null == patches || patches.isEmpty()) {
             return;
         }
