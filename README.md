@@ -9,9 +9,9 @@ modernized for **AGP 8+**. Pishi (皮实, "hardy / takes a beating") is an Andro
 that lets you fix method-level bugs and ship them to running apps **without reinstalling** —
 patches take effect instantly, no restart required.
 
-> **Status: 0.2.0.** Both the instrumented release build and one-command patch generation
-> are verified end-to-end in real builds (methodsMap auto-archived per version, patch.jar
-> produced from `@Modify`-marked fixes). On-device patch loading is the next milestone.
+> **Status: 0.3.0.** Instrumented builds, one-command patch generation, and a built-in
+> HTTP patch distributor are all verified end-to-end in real builds. On-device patch
+> loading is the next milestone.
 
 ## Why a fork
 
@@ -64,8 +64,15 @@ pishi {
 ./gradlew assembleRelease -Ppishi.patch=true
 ```
 
-→ `build/outputs/robust/patch.jar`. Distribute it with your own manifest (the sample's
-`PatchManipulateImp` shows the client side: fetch → verify → apply).
+→ `build/outputs/robust/patch.jar` + `patch-manifest.json` (version info + md5), ready to
+upload to any static host. On the client, the built-in distributor consumes it — no custom
+download code:
+
+```java
+new PatchExecutor(getApplicationContext(),
+        new SimpleHttpPatchManipulator("https://cdn.example.com/patches/manifest.json"),
+        new RobustCallBackSample()).start();
+```
 
 Coordinates: `io.github.lanhuangjg:{pishi-gradle-plugin, pishi-autopatch, pishi-api, pishi-core}`.
 Plugin ids: `io.github.lanhuangjg.pishi` / `io.github.lanhuangjg.pishi.autopatch`.
@@ -89,7 +96,7 @@ Build the sample:
 - [ ] GitHub Actions CI
 - [x] Published to Maven Central (since 0.1.1)
 - [x] R8 mapping compatibility (parses R8's `#` JSON metadata comment lines)
-- [ ] Built-in SimpleHttpPatchManipulator + patch signing task
+- [x] Built-in SimpleHttpPatchManipulator + automatic patch-manifest.json emission
 - [ ] Optionally restore APK-hash matching via the AGP 8 artifacts API
 
 ## License & attribution

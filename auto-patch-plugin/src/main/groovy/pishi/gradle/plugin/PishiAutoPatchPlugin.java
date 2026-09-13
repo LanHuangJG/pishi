@@ -53,7 +53,10 @@ public class PishiAutoPatchPlugin implements Plugin<Project> {
                                 baseExtension == null ? new ArrayList<java.io.File>() : baseExtension.getBootClasspath()));
                         if (v instanceof ApplicationVariant) {
                             task.getBaseVersionName().set(((ApplicationVariant) v).getOutputs().get(0).getVersionName());
+                            task.getBaseVersionCode().set(((ApplicationVariant) v).getOutputs().get(0).getVersionCode());
                         }
+                        Object pv = project.findProperty("pishi.patch.version");
+                        task.setPatchVersion(pv == null ? "1" : String.valueOf(pv));
                     });
             v.getArtifacts().forScope(com.android.build.api.variant.ScopedArtifacts.Scope.ALL)
                     .use(taskProvider).toGet(ScopedArtifact.CLASSES.INSTANCE,

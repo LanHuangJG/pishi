@@ -10,11 +10,11 @@ buildscript {
         classpath 'com.vanniktech:gradle-maven-publish-plugin:0.37.0'
         // The sample app builds with the published plugins (kept active for local
         // verification; comment these two lines out to build the library modules only):
-        classpath 'io.github.lanhuangjg:pishi-gradle-plugin:0.2.0'
-        classpath 'io.github.lanhuangjg:pishi-autopatch:0.2.0'
+        classpath 'io.github.lanhuangjg:pishi-gradle-plugin:0.3.0'
+        classpath 'io.github.lanhuangjg:pishi-autopatch:0.3.0'
         // or, equivalently, the plugin markers:
-        // classpath 'io.github.lanhuangjg:pishi.gradle.plugin:0.2.0'
-        // classpath 'io.github.lanhuangjg:pishi-autopatch.gradle.plugin:0.2.0'
+        // classpath 'io.github.lanhuangjg:pishi.gradle.plugin:0.3.0'
+        // classpath 'io.github.lanhuangjg:pishi-autopatch.gradle.plugin:0.3.0'
     }
 }
 

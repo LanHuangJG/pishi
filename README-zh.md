@@ -8,8 +8,8 @@ Pishi 是 [美团 Robust](https://github.com/Meituan-Dianping/Robust) 0.4.99 的
 已为 **AGP 8+** 完成现代化迁移。"皮实"者，耐造扛折腾也——它是 Android 方法级热修复框架，
 能把 bug 修复补丁下发给运行中的 App，**无需重新安装**，补丁即时生效、不用重启。
 
-> **状态：0.2.0。** 插桩构建与一键出补丁均已在真实构建中端到端验证（方法表按版本自动归档、
-> `@Modify` 标记的修复可产出 patch.jar）；真机补丁加载是下一个里程碑。
+> **状态：0.3.0。** 插桩构建、一键出补丁、内置 HTTP 补丁分发器均已在真实构建中端到端验证；
+> 真机补丁加载是下一个里程碑。
 
 ## 为什么要 fork
 
@@ -56,8 +56,14 @@ pishi {
 ./gradlew assembleRelease -Ppishi.patch=true
 ```
 
-→ 产出 `build/outputs/robust/patch.jar`。分发用你自己的清单（sample 里的
-`PatchManipulateImp` 就是客户端模板：拉取 → 校验 → 应用）。
+→ 产出 `build/outputs/robust/patch.jar` 和 `patch-manifest.json`（版本信息 + MD5），
+上传到任意静态托管即可。客户端用内置分发器消费——无需自己写下载代码：
+
+```java
+new PatchExecutor(getApplicationContext(),
+        new SimpleHttpPatchManipulator("https://cdn.example.com/patches/manifest.json"),
+        new RobustCallBackSample()).start();
+```
 
 坐标：`io.github.lanhuangjg:{pishi-gradle-plugin, pishi-autopatch, pishi-api, pishi-core}`。
 插件 id：`io.github.lanhuangjg.pishi` / `io.github.lanhuangjg.pishi.autopatch`。
@@ -81,7 +87,7 @@ pishi {
 - [ ] GitHub Actions CI
 - [x] 发布到 Maven Central（0.1.1 起）
 - [x] R8 mapping 兼容（支持 R8 输出的 # 元数据注释行）
-- [ ] 内置 SimpleHttpPatchManipulator + 补丁签名任务
+- [x] 内置 SimpleHttpPatchManipulator + 自动产出 patch-manifest.json
 - [ ] 视需要用 AGP 8 artifacts API 恢复 APK-hash 匹配
 
 ## 协议与致谢

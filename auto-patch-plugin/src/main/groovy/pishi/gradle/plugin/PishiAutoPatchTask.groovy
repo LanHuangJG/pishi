@@ -63,6 +63,12 @@ abstract class PishiAutoPatchTask extends DefaultTask {
     @Internal
     abstract org.gradle.api.provider.Property<String> getBaseVersionName()
 
+    @Internal
+    abstract org.gradle.api.provider.Property<Integer> getBaseVersionCode()
+
+    @Internal
+    String patchVersion
+
     private static String dex2SmaliCommand
     private static String smali2DexCommand
     private static String jar2DexCommand
@@ -193,6 +199,34 @@ abstract class PishiAutoPatchTask extends DefaultTask {
         executeCommand(smali2DexCommand)
         packagePatchDex2Jar()
         deleteTmpFiles()
+        emitManifest()
+    }
+
+    /** writes patch-manifest.json next to patch.jar: version info + md5, ready to upload */
+    def emitManifest() {
+        def patchJar = new File(Config.robustGenerateDirectory, Constants.PATACH_JAR_NAME)
+        if (!patchJar.exists()) {
+            return
+        }
+        def manifest = new File(Config.robustGenerateDirectory, "patch-manifest.json")
+        manifest.text = '{"appVersionName": ' + jsonString(baseVersionName.getOrNull()) + ', "appVersionCode": ' + (baseVersionCode.getOrNull() ?: -1) + ', "patchVersion": ' + (patchVersion ?: "1") + ', "url": "", "md5": "' + md5Of(patchJar) + '"}'
+        logger.lifecycle("pishi: patch manifest written to ${manifest} — upload it and patch.jar to your host")
+    }
+
+    static String md5Of(File f) {
+        def d = java.security.MessageDigest.getInstance("MD5")
+        f.withInputStream { ins ->
+            def buf = new byte[8192]
+            int n
+            while ((n = ins.read(buf)) != -1) {
+                d.update(buf, 0, n)
+            }
+        }
+        d.digest().collect { String.format('%02x', it) }.join()
+    }
+
+    static String jsonString(v) {
+        v == null ? "null" : '"' + String.valueOf(v).replace('"', '\\"') + '"'
     }
 
     def zipPatchClassesFile() {
