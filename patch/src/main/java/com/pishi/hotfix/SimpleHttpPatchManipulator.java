@@ -57,7 +57,7 @@ public class SimpleHttpPatchManipulator extends PatchManipulate {
     protected List<Patch> fetchPatchList(Context context) {
         List<Patch> patches = new ArrayList<>();
         try {
-            String body = httpGet(manifestUrl);
+            String body = httpGet(manifestUrl + (manifestUrl.contains("?") ? "&" : "?") + "_=" + System.currentTimeMillis());
             if (body == null || body.isEmpty()) {
                 return patches;
             }
@@ -65,13 +65,14 @@ public class SimpleHttpPatchManipulator extends PatchManipulate {
             long manifestVersionCode = manifest.optLong("appVersionCode", -1);
             long currentVersionCode = versionCode(context);
             if (manifestVersionCode > 0 && manifestVersionCode != currentVersionCode) {
-                Log.i(TAG, "pishi: patch manifest targets versionCode " + manifestVersionCode
-                        + ", current is " + currentVersionCode + " — skipping");
+                PishiDebugLog.log("清单版本 " + manifestVersionCode + " != 当前 " + currentVersionCode + "，跳过");
+                Log.i(TAG, "pishi: patch manifest targets versionCode " + manifestVersionCode + ", current is " + currentVersionCode);
                 return patches;
             }
             String url = manifest.optString("url", "");
             if (url.isEmpty()) {
-                Log.i(TAG, "pishi: manifest has no patch url — nothing to apply");
+                PishiDebugLog.log("清单里没有补丁 url，无可应用");
+            Log.i(TAG, "pishi: manifest has no patch url");
                 return patches;
             }
             Patch patch = new Patch();
@@ -82,6 +83,7 @@ public class SimpleHttpPatchManipulator extends PatchManipulate {
             patch.setLocalPath(new File(context.getCacheDir(), "pishi/patch.jar").getAbsolutePath());
             patches.add(patch);
         } catch (Exception e) {
+            PishiDebugLog.log("拉取清单异常: " + e);
             Log.w(TAG, "pishi: fetchPatchList failed", e);
         }
         return patches;
@@ -97,15 +99,20 @@ public class SimpleHttpPatchManipulator extends PatchManipulate {
             if (md5 != null && !md5.isEmpty()) {
                 String actual = md5Of(downloaded);
                 if (!md5.equalsIgnoreCase(actual)) {
-                    Log.w(TAG, "pishi: patch md5 mismatch, expected " + md5 + " got " + actual + " — rejected");
+                    PishiDebugLog.log("MD5 不匹配！期望 " + md5 + " 实际 " + actual + "，已拒绝");
+                Log.w(TAG, "pishi: patch md5 mismatch");
                     return false;
                 }
             }
-            File temp = new File(context.getCacheDir(), "pishi/patch.temp.jar");
-            copy(downloaded, temp);
-            patch.setTempPath(temp.getAbsolutePath());
+            // Patch.getTempPath() appends "_temp.jar" itself — the stored base path
+            // must NOT carry an extension, or the loader reads a nonexistent file
+            File tempBase = new File(context.getCacheDir(), "pishi/patch_dl");
+            patch.setTempPath(tempBase.getAbsolutePath());
+            copy(downloaded, new File(patch.getTempPath()));
+            PishiDebugLog.log("补丁下载+校验通过，大小 " + downloaded.length() + "，temp=" + new java.io.File(patch.getTempPath()).length());
             return true;
         } catch (Exception e) {
+            PishiDebugLog.log("校验/下载异常: " + e);
             Log.w(TAG, "pishi: verifyPatch failed", e);
             return false;
         }
@@ -131,6 +138,7 @@ public class SimpleHttpPatchManipulator extends PatchManipulate {
         conn.setReadTimeout(30_000);
         try {
             int code = conn.getResponseCode();
+            PishiDebugLog.log("拉取清单 HTTP " + code + " (" + url + ")");
             if (code != 200) {
                 Log.w(TAG, "pishi: manifest http " + code);
                 return null;

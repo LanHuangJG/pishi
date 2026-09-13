@@ -8,8 +8,9 @@ Pishi 是 [美团 Robust](https://github.com/Meituan-Dianping/Robust) 0.4.99 的
 已为 **AGP 8+** 完成现代化迁移。"皮实"者，耐造扛折腾也——它是 Android 方法级热修复框架，
 能把 bug 修复补丁下发给运行中的 App，**无需重新安装**，补丁即时生效、不用重启。
 
-> **状态：0.3.0。** 插桩构建、一键出补丁、内置 HTTP 补丁分发器均已在真实构建中端到端验证；
-> 真机补丁加载是下一个里程碑。
+> **状态：0.3.6。** 真机全链路验证通过：插桩构建 -> CDN 清单 -> 补丁下载/校验 ->
+> DexClassLoader -> 即时生效。真机实测修掉三个 bug，其中包括 Android 10+ 的
+> 「Writable dex file is not allowed」——上游 Robust 补丁在新系统上静默失败的根本原因。
 
 ## 为什么要 fork
 
@@ -83,7 +84,7 @@ new PatchExecutor(getApplicationContext(),
 
 ## Roadmap
 
-- [ ] 补丁生成的真机加载验证（插桩与方法表归档已实证）
+- [x] 真机补丁加载验证（0.3.6）
 - [ ] GitHub Actions CI
 - [x] 发布到 Maven Central（0.1.1 起）
 - [x] R8 mapping 兼容（支持 R8 输出的 # 元数据注释行）

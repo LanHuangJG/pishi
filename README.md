@@ -9,9 +9,10 @@ modernized for **AGP 8+**. Pishi (皮实, "hardy / takes a beating") is an Andro
 that lets you fix method-level bugs and ship them to running apps **without reinstalling** —
 patches take effect instantly, no restart required.
 
-> **Status: 0.3.0.** Instrumented builds, one-command patch generation, and a built-in
-> HTTP patch distributor are all verified end-to-end in real builds. On-device patch
-> loading is the next milestone.
+> **Status: 0.3.6.** Full pipeline verified on a real device: instrumented build ->
+> CDN manifest -> patch download/verify -> DexClassLoader -> instant effect. Three
+> real-device bugs found and fixed, including "Writable dex file is not allowed" on
+> Android 10+ which silently breaks upstream Robust patches on modern Android.
 
 ## Why a fork
 
@@ -92,7 +93,7 @@ Build the sample:
 
 ## Roadmap
 
-- [ ] Verify patch generation + on-device patch loading (instrumentation itself is verified end-to-end in real builds)
+- [x] On-device patch loading verified (0.3.6)
 - [ ] GitHub Actions CI
 - [x] Published to Maven Central (since 0.1.1)
 - [x] R8 mapping compatibility (parses R8's `#` JSON metadata comment lines)

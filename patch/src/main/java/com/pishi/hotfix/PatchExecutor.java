@@ -91,13 +91,22 @@ public class PatchExecutor extends Thread {
         ClassLoader classLoader = null;
 
         try {
+            // Android 10+ rejects loading a writable executable ("Writable dex file is
+            // not allowed") — the temp jar must lose its write bits before loading
+            java.io.File tempJar = new java.io.File(patch.getTempPath());
+            if (tempJar.exists()) {
+                tempJar.setWritable(false, false);
+                tempJar.setReadable(true, false);
+            }
             File dexOutputDir = getPatchCacheDirPath(context, patch.getName() + patch.getMd5());
             classLoader = new DexClassLoader(patch.getTempPath(), dexOutputDir.getAbsolutePath(),
                     null, PatchExecutor.class.getClassLoader());
         } catch (Throwable throwable) {
             throwable.printStackTrace();
+            robustCallBack.exceptionNotify(throwable, "class:PatchExecutor DexClassLoader init");
         }
         if (null == classLoader) {
+            robustCallBack.logNotify("DexClassLoader init failed, tempPath=" + patch.getTempPath(), "class:PatchExecutor method:patch line:100");
             return false;
         }
 
