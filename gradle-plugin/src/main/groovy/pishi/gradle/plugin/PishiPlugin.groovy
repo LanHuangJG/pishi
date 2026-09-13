@@ -71,18 +71,19 @@ class PishiPlugin implements Plugin<Project> {
             return
         }
 
-        List<String> hotfixPackages = !ext.hotfixPackages.isEmpty() ? ext.hotfixPackages : xmlHotfixPackages
-        List<String> exceptPackages = !ext.exceptPackages.isEmpty() ? ext.exceptPackages : xmlExceptPackages
-        if (ext.forceInsertLambda != null) {
-            forceInsertLambda = ext.forceInsertLambda
-        }
-
-        if (hotfixPackages.isEmpty()) {
-            project.logger.warn("pishi: no hotfixPackage configured (pishi{} DSL or robust.xml), " +
-                    "no class will be instrumented")
-        }
-
         components.onVariants(components.selector().all(), { variant ->
+            // read config lazily: the user's pishi{} block runs after plugin apply
+            List<String> hotfixPackages = !ext.hotfixPackages.isEmpty() ? ext.hotfixPackages : xmlHotfixPackages
+            List<String> exceptPackages = !ext.exceptPackages.isEmpty() ? ext.exceptPackages : xmlExceptPackages
+            def fl = ext.forceInsertLambda
+            if (fl != null) {
+                forceInsertLambda = fl
+            }
+            if (hotfixPackages.isEmpty()) {
+                project.logger.warn("pishi: no hotfixPackage configured (pishi{} DSL or robust.xml), " +
+                        "no class will be instrumented")
+                return
+            }
             if ("debug" != variant.buildType) {
                 registerInstrumentation(project, variant, hotfixPackages, hotfixMethods,
                         exceptPackages, exceptMethods, hotfixMethodLevel,

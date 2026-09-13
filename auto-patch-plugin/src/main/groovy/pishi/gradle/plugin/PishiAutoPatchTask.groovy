@@ -20,6 +20,7 @@ import javassist.expr.ExprEditor
 import javassist.expr.MethodCall
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.Directory
+import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.RegularFile
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
@@ -56,8 +57,9 @@ abstract class PishiAutoPatchTask extends DefaultTask {
     @Internal
     abstract Property<File> getInputBuildDir()
 
-    @Internal
-    abstract ListProperty<File> getBootClasspathList()
+    /** variant compile classpath; the android platform jar (android.jar) is picked from here */
+    @Classpath
+    abstract ConfigurableFileCollection getCompileClasspathFiles()
 
     /** versionName of the app this patch targets; picks the matching archived methodsMap */
     @Internal
@@ -73,6 +75,7 @@ abstract class PishiAutoPatchTask extends DefaultTask {
     private static String smali2DexCommand
     private static String jar2DexCommand
     private static String ROBUST_DIR
+    private static String androidJarPath
 
     @TaskAction
     void run() {
@@ -81,9 +84,7 @@ abstract class PishiAutoPatchTask extends DefaultTask {
         initConfig()
         copyJarToRobust()
         def classPool = Config.classPool
-        bootClasspathList.get().each {
-            classPool.appendClassPath((String) it.absolutePath)
-        }
+        classPool.appendClassPath(androidJarPath)
         def locations = []
         allJars.get().each { locations << it.asFile }
         allDirs.get().each { locations << it.asFile }
@@ -107,8 +108,28 @@ abstract class PishiAutoPatchTask extends DefaultTask {
         Config.robustGenerateDirectory = "${inputBuildDir.get()}" + File.separator + "$Constants.ROBUST_GENERATE_DIRECTORY" + File.separator
         dex2SmaliCommand = "  java -jar ${baksmaliFilePath} -o classout" + File.separator + "  $Constants.CLASSES_DEX_NAME"
         smali2DexCommand = "   java -jar ${smaliFilePath} classout" + File.separator + " -o " + Constants.PATACH_DEX_NAME
-        // D8 replaced the discontinued dx; the r8 jar ships on the plugin classpath
-        def androidJar = bootClasspathList.get().isEmpty() ? "" : bootClasspathList.get().first().absolutePath
+        // D8 replaced the discontinued dx; the r8 jar ships on the plugin classpath.
+        // android.jar comes from the compile classpath (AGP 8+9) or the legacy bootClasspath.
+        def androidJarFile = compileClasspathFiles.files.find { it.name == "android.jar" }
+        def androidJar = androidJarFile != null ? androidJarFile.absolutePath : ""
+        if (androidJar.isEmpty()) {
+            // AGP 9 compile classpath has no android.jar; derive it from the SDK
+            def lp = new File(inputProjectDir.get().parentFile, "local.properties")
+            if (lp.exists()) {
+                def sdkDir = lp.readLines().findAll { it.startsWith("sdk.dir") }.collect { it.split("=", 2)[1].trim().replace("\\:", ":") }
+                if (sdkDir) {
+                    def plats = new File(sdkDir[0], "platforms")
+                    def candidates = plats.listFiles()?.sort { it.name }?.reverse()
+                    for (d in candidates) {
+                        def aj = new File(d, "android.jar")
+                        if (aj.exists()) { androidJar = aj.absolutePath; break }
+                    }
+                }
+            }
+        }
+        androidJarPath = androidJar
+        logger.lifecycle("pishi: cc names: " + compileClasspathFiles.files.collect { it.name }.join(", "))
+        logger.lifecycle("pishi: androidJar=[${androidJarPath}] ccFiles=${compileClasspathFiles.files.size()} jars=${allJars.get().size()} dirs=${allDirs.get().size()}")
         jar2DexCommand = "   java -cp ${resolveR8Jar()} com.android.tools.r8.D8 --release --min-api 21 --lib ${androidJar} --output . ${Constants.ZIP_FILE_NAME}"
         // methodsMap resolution: version-matched archive first, legacy path as fallback
         def versionName = baseVersionName.getOrNull()
