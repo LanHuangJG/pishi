@@ -1,3 +1,8 @@
+plugins {
+    // auto-provisions the daemon/toolchain JDK declared in gradle-daemon-jvm.properties
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
+}
+
 include ':app'
 include ':autopatchbase'
 include ':gradle-plugin'

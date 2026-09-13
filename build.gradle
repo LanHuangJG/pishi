@@ -7,6 +7,7 @@ buildscript {
     }
     dependencies {
         classpath 'com.android.tools.build:gradle:8.13.0'
+        classpath 'com.vanniktech:gradle-maven-publish-plugin:0.37.0'
         // After `./gradlew publishToMavenLocal` (see README), uncomment to build the
         // sample app with instrumentation enabled:
         // classpath 'pishi:pishi.gradle.plugin:0.1.0'
@@ -20,6 +21,11 @@ allprojects {
         mavenCentral()
     }
     tasks.withType(JavaCompile).configureEach {
+        options.encoding = 'UTF-8'
+    }
+    // upstream Robust sources have non-strict javadoc; don't fail Central builds on it
+    tasks.withType(org.gradle.api.tasks.javadoc.Javadoc).configureEach {
+        failOnError = false
         options.encoding = 'UTF-8'
     }
 }

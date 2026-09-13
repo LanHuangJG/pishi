@@ -5,6 +5,42 @@ plugins {
 group = GROUP
 version = VERSION_NAME
 
+base {
+    archivesName = 'pishi-api'
+}
+
+apply plugin: 'com.vanniktech.maven.publish'
+
+mavenPublishing {
+    publishToMavenCentral()
+    signAllPublications()
+
+    pom {
+        name = "pishi-api"
+        description = "Pishi (Robust fork) runtime API: annotations and ChangeQuickRedirect"
+        inceptionYear = "2026"
+        url = "https://github.com/LanHuangJG/pishi/"
+        licenses {
+            license {
+                name = "Apache-2.0"
+                url = "https://www.apache.org/licenses/LICENSE-2.0.txt"
+                distribution = "repo"
+            }
+        }
+        developers {
+            developer {
+                id = "lanhuangjg"
+                name = "LanHuangJG"
+            }
+        }
+        scm {
+            url = "https://github.com/LanHuangJG/pishi/"
+            connection = "scm:git:https://github.com/LanHuangJG/pishi.git"
+            developerConnection = "scm:git:git@github.com:LanHuangJG/pishi.git"
+        }
+    }
+}
+
 java {
     sourceCompatibility = JavaVersion.VERSION_1_8
     targetCompatibility = JavaVersion.VERSION_1_8
