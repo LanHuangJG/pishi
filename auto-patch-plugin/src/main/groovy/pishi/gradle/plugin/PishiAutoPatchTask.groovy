@@ -19,8 +19,10 @@ import javassist.CtMethod
 import javassist.expr.ExprEditor
 import javassist.expr.MethodCall
 import org.gradle.api.DefaultTask
-import org.gradle.api.file.FileSystemLocation
+import org.gradle.api.file.Directory
+import org.gradle.api.file.RegularFile
 import org.gradle.api.provider.ListProperty
+import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Classpath
 import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Internal
@@ -38,18 +40,28 @@ import java.util.zip.ZipOutputStream
  */
 abstract class PishiAutoPatchTask extends DefaultTask {
 
+    /** all project + library classes packaged as jars */
     @InputFiles
     @Classpath
-    abstract ListProperty<FileSystemLocation> getAllClasses()
+    abstract ListProperty<RegularFile> getAllJars()
+
+    /** all project classes as directories */
+    @InputFiles
+    @Classpath
+    abstract ListProperty<Directory> getAllDirs()
 
     @Internal
-    File inputProjectDir
+    abstract Property<File> getInputProjectDir()
 
     @Internal
-    File inputBuildDir
+    abstract Property<File> getInputBuildDir()
 
     @Internal
-    List<java.io.File> bootClasspathList
+    abstract ListProperty<File> getBootClasspathList()
+
+    /** versionName of the app this patch targets; picks the matching archived methodsMap */
+    @Internal
+    abstract org.gradle.api.provider.Property<String> getBaseVersionName()
 
     private static String dex2SmaliCommand
     private static String smali2DexCommand
@@ -63,10 +75,12 @@ abstract class PishiAutoPatchTask extends DefaultTask {
         initConfig()
         copyJarToRobust()
         def classPool = Config.classPool
-        bootClasspathList.each {
+        bootClasspathList.get().each {
             classPool.appendClassPath((String) it.absolutePath)
         }
-        def locations = allClasses.get().collect { it.asFile }
+        def locations = []
+        allJars.get().each { locations << it.asFile }
+        allDirs.get().each { locations << it.asFile }
         def box = ReflectUtils.toCtClasses(locations, classPool)
         logger.lifecycle "pishi: loaded ${box.size()} classes"
         autoPatch(box)
@@ -81,19 +95,42 @@ abstract class PishiAutoPatchTask extends DefaultTask {
         ReadMapping.init()
         Config.init()
 
-        ROBUST_DIR = "${inputProjectDir}${File.separator}robust${File.separator}"
+        ROBUST_DIR = "${inputProjectDir.get()}${File.separator}robust${File.separator}"
         def baksmaliFilePath = "${ROBUST_DIR}${Constants.LIB_NAME_ARRAY[0]}"
         def smaliFilePath = "${ROBUST_DIR}${Constants.LIB_NAME_ARRAY[1]}"
-        Config.robustGenerateDirectory = "${inputBuildDir}" + File.separator + "$Constants.ROBUST_GENERATE_DIRECTORY" + File.separator
+        Config.robustGenerateDirectory = "${inputBuildDir.get()}" + File.separator + "$Constants.ROBUST_GENERATE_DIRECTORY" + File.separator
         dex2SmaliCommand = "  java -jar ${baksmaliFilePath} -o classout" + File.separator + "  $Constants.CLASSES_DEX_NAME"
         smali2DexCommand = "   java -jar ${smaliFilePath} classout" + File.separator + " -o " + Constants.PATACH_DEX_NAME
         // D8 replaced the discontinued dx; the r8 jar ships on the plugin classpath
-        def androidJar = bootClasspathList.isEmpty() ? "" : bootClasspathList.first().absolutePath
+        def androidJar = bootClasspathList.get().isEmpty() ? "" : bootClasspathList.get().first().absolutePath
         jar2DexCommand = "   java -cp ${resolveR8Jar()} com.android.tools.r8.D8 --release --min-api 21 --lib ${androidJar} --output . ${Constants.ZIP_FILE_NAME}"
-        ReadXML.readXMl(inputProjectDir.path)
-        def methodsMapFile = new File(inputProjectDir.path + Constants.METHOD_MAP_PATH)
+        // methodsMap resolution: version-matched archive first, legacy path as fallback
+        def versionName = baseVersionName.getOrNull()
+        // put the version-matched R8 mapping where ReadXML/ReadMapping expect it (before ReadXML validates)
+        if (versionName != null && !versionName.isEmpty()) {
+            def versionedMapping = new File(ROBUST_DIR + versionName, "mapping.txt")
+            if (versionedMapping.exists()) {
+                java.nio.file.Files.copy(versionedMapping.toPath(),
+                        new File(ROBUST_DIR, "mapping.txt").toPath(),
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+            }
+        }
+        ReadXML.readXMl(inputProjectDir.get().path)
+        def methodsMapFile = null
+        if (versionName != null && !versionName.isEmpty()) {
+            def versioned = new File(ROBUST_DIR + versionName, "methodsMap.jsonl")
+            if (versioned.exists()) {
+                methodsMapFile = versioned
+            }
+        }
+        if (methodsMapFile == null) {
+            def legacy = new File(inputProjectDir.get().path + Constants.METHOD_MAP_PATH)
+            if (legacy.exists()) {
+                methodsMapFile = legacy
+            }
+        }
         Config.methodMap = new LinkedHashMap<String, Integer>()
-        if (methodsMapFile.exists()) {
+        if (methodsMapFile != null) {
             def json = new groovy.json.JsonSlurper()
             methodsMapFile.eachLine { line ->
                 if (line.trim()) {
@@ -101,8 +138,10 @@ abstract class PishiAutoPatchTask extends DefaultTask {
                     ((Map) entry.methods).each { k, v -> Config.methodMap.put(k as String, v as Integer) }
                 }
             }
+            logger.lifecycle("pishi: methodsMap loaded from ${methodsMapFile} (${Config.methodMap.size()} methods)")
         } else {
-            logger.warn("pishi: ${methodsMapFile} not found — copy it from the instrumented module's build/outputs/robust/ first")
+            logger.warn("pishi: no methodsMap.jsonl for version ${versionName} under ${ROBUST_DIR} — " +
+                    "build that version with the pishi plugin first")
         }
     }
 
@@ -140,7 +179,7 @@ abstract class PishiAutoPatchTask extends DefaultTask {
     }
 
     def autoPatch(List<CtClass> box) {
-        String patchPath = inputBuildDir.getAbsolutePath() + File.separator + Constants.ROBUST_GENERATE_DIRECTORY + File.separator
+        String patchPath = inputBuildDir.get().getAbsolutePath() + File.separator + Constants.ROBUST_GENERATE_DIRECTORY + File.separator
         clearPatchPath(patchPath)
         ReadAnnotation.readAnnotation(box, logger)
         if (Config.supportProGuard) {
@@ -238,10 +277,12 @@ abstract class PishiAutoPatchTask extends DefaultTask {
 
     def executeCommand(String command) {
         Process output = command.execute(null, new File(Config.robustGenerateDirectory))
-        output.inputStream.eachLine { println command + " inputStream output   " + it }
-        output.errorStream.eachLine {
-            println command + " errorStream output   " + it
-            throw new RuntimeException("execute command " + command + " error")
+        output.inputStream.eachLine { println command + " out> " + it }
+        def errText = new StringBuilder()
+        output.waitForProcessOutput(System.out, errText)
+        if (output.exitValue() != 0) {
+            println command + " stderr> " + errText.toString()
+            throw new RuntimeException("execute command " + command + " failed with exit code " + output.exitValue())
         }
     }
 

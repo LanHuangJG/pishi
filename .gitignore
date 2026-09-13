@@ -23,4 +23,4 @@ captures/
 *.aab
 
 # sample build artifacts rewritten by pishi at build time
-app/robust/
+app/robust/*.jar

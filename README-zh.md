@@ -8,8 +8,8 @@ Pishi 是 [美团 Robust](https://github.com/Meituan-Dianping/Robust) 0.4.99 的
 已为 **AGP 8+** 完成现代化迁移。"皮实"者，耐造扛折腾也——它是 Android 方法级热修复框架，
 能把 bug 修复补丁下发给运行中的 App，**无需重新安装**，补丁即时生效、不用重启。
 
-> **状态：0.1.1。** 插桩已在真实构建中端到端验证（每个被插桩方法都会记录进
-> `methodsMap.jsonl`）；补丁生成与真机加载是下一步，接口可能变动。
+> **状态：0.2.0。** 插桩构建与一键出补丁均已在真实构建中端到端验证（方法表按版本自动归档、
+> `@Modify` 标记的修复可产出 patch.jar）；真机补丁加载是下一个里程碑。
 
 ## 为什么要 fork
 
@@ -40,13 +40,24 @@ Robust 公开仓库 2020 年起停止维护，其 Gradle 插件依赖的 Transfo
 
 ## 用法
 
-工作流与 Robust 完全一致：
+1. 在 app 模块应用 `io.github.lanhuangjg.pishi` 插件并配置：
 
-1. 在 app 模块应用 `io.github.lanhuangjg.pishi` 插件（配置仍在模块目录的 `robust.xml`，`<packname>` 里列出需要插桩的包）。
-2. release 构建自动插桩，`build/outputs/robust/` 下生成 `methodsMap.jsonl`，拷贝到模块的
-   `robust/` 目录。
-3. 发补丁时：修改代码，用 `@Modify` / `RobustModify.modify()` 标记改动方法，改用
-   `io.github.lanhuangjg.pishi.autopatch` 插件替换 `pishi`，构建即产出 `patch.jar`。
+```groovy
+pishi {
+    hotfixPackages = ['com.example.app']   // robust.xml 仍可用于 Robust 老项目迁移
+}
+```
+
+2. release 构建自动插桩；`methodsMap.jsonl` 和 R8 `mapping.txt` **自动归档到
+   `robust/<versionName>/`**——无需任何手动步骤。
+3. 发补丁：修好代码，在每个改动方法里加 `@Modify` / `RobustModify.modify()`，然后跑**一条命令**：
+
+```bash
+./gradlew assembleRelease -Ppishi.patch=true
+```
+
+→ 产出 `build/outputs/robust/patch.jar`。分发用你自己的清单（sample 里的
+`PatchManipulateImp` 就是客户端模板：拉取 → 校验 → 应用）。
 
 坐标：`io.github.lanhuangjg:{pishi-gradle-plugin, pishi-autopatch, pishi-api, pishi-core}`。
 插件 id：`io.github.lanhuangjg.pishi` / `io.github.lanhuangjg.pishi.autopatch`。
@@ -55,7 +66,8 @@ Robust 公开仓库 2020 年起停止维护，其 Gradle 插件依赖的 Transfo
 
 ```bash
 ./gradlew publishToMavenLocal   # 一次性：把插件发布到本地仓库
-./gradlew :app:assembleRelease  # 插桩构建；methodsMap.jsonl 落在 app/build/outputs/robust/
+./gradlew :app:assembleRelease  # 插桩构建
+./gradlew :app:assembleRelease -Ppishi.patch=true   # 改为生成补丁
 ```
 
 ## 环境要求
@@ -65,10 +77,11 @@ Robust 公开仓库 2020 年起停止维护，其 Gradle 插件依赖的 Transfo
 
 ## Roadmap
 
-- [ ] 真机/模拟器验证全链路补丁加载
+- [ ] 补丁生成的真机加载验证（插桩与方法表归档已实证）
 - [ ] GitHub Actions CI
-- [ ] 发布到 Maven Central
-- [ ] R8 边界用例矩阵（0.4.99 支持 ProGuard mapping，R8 产物格式大体兼容但未测）
+- [x] 发布到 Maven Central（0.1.1 起）
+- [x] R8 mapping 兼容（支持 R8 输出的 # 元数据注释行）
+- [ ] 内置 SimpleHttpPatchManipulator + 补丁签名任务
 - [ ] 视需要用 AGP 8 artifacts API 恢复 APK-hash 匹配
 
 ## 协议与致谢

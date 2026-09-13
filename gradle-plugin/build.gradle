@@ -76,4 +76,6 @@ dependencies {
     implementation 'org.ow2.asm:asm-commons:9.7.1'
     implementation 'org.ow2.asm:asm-tree:9.7.1'
     implementation project(':autopatchbase')
+    // -Ppishi.patch delegates patch generation to the autopatch plugin classes
+    implementation project(':auto-patch-plugin')
 }

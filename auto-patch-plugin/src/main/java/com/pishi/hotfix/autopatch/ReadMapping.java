@@ -42,34 +42,19 @@ public class ReadMapping {
     public void initMappingInfo() {
         //查找mapping文件
         InputStream is = null;
-        boolean needBacktrace = true;
         String line;
         try {
             is = new FileInputStream(Config.mappingFilePath);
             BufferedReader reader = new BufferedReader(new InputStreamReader(is, "UTF-8"), 1024);
-            // 读取一行，存储于字符串列表中
-            line = reader.readLine().trim();
+            // R8 mapping files carry '#' JSON metadata comments that old ProGuard parsing chokes on
+            line = nextMeaningfulLine(reader);
             while (line != null) {
-                line = line.trim();
-                if (!needBacktrace) {
-                    line = reader.readLine();
-                    if (line == null) {
-                        break;
-                    }
-                    line = line.trim();
-                }
-                needBacktrace = false;
                 if (line.indexOf("->") > 0 && line.indexOf(":") == line.length() - 1) {
                     ClassMapping classMapping = new ClassMapping();
                     classMapping.setClassName(line.substring(0, line.indexOf("->") - 1).trim());
                     classMapping.setValueName(line.split("->")[1].substring(0, line.split("->")[1].length() - 1).trim());
-                    line = reader.readLine();
-                    while (line != null) {
-                        line = line.trim();
-                        if (line.endsWith(":")) {
-                            needBacktrace = true;
-                            break;
-                        }
+                    line = nextMeaningfulLine(reader);
+                    while (line != null && !line.endsWith(":")) {
                         String[] lineinfo = line.split(" ");
                         if (lineinfo.length != 4) {
                             throw new RuntimeException("mapping line info is error  " + line);
@@ -81,14 +66,16 @@ public class ReadMapping {
                             //fields
                             classMapping.getMemberMapping().put(lineinfo[1].trim(), lineinfo[3].trim());
                         }
-                        line = reader.readLine();
-                        if (line == null) {
-                            break;
-                        }
-                        line = line.trim();
+                        line = nextMeaningfulLine(reader);
                     }
                     usedInModifiedClassMappingInfo.put(classMapping.getClassName(), classMapping);
+                    if (line != null) {
+                        // the pending line is the next class header; loop back into it
+                        continue;
+                    }
+                    break;
                 }
+                line = nextMeaningfulLine(reader);
             }
         } catch (IOException ioe) {
             ioe.printStackTrace();
@@ -101,6 +88,15 @@ public class ReadMapping {
                 e.printStackTrace();
             }
         }
+    }
+
+    /** R8 mappings embed '#' JSON metadata comments that Robust's parser never knew */
+    private String nextMeaningfulLine(BufferedReader reader) throws IOException {
+        String l = reader.readLine();
+        while (l != null && l.trim().startsWith("#")) {
+            l = reader.readLine();
+        }
+        return l == null ? null : l.trim();
     }
 
     public ClassMapping getClassMapping(String classname) {

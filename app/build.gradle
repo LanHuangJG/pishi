@@ -2,6 +2,12 @@ plugins {
     id 'com.android.application'
 }
 
+plugins.withId('io.github.lanhuangjg.pishi') {
+    pishi {
+        hotfixPackages = ['com.pishi.sample']
+    }
+}
+
 android {
     namespace 'com.pishi.sample'
     compileSdk 36
